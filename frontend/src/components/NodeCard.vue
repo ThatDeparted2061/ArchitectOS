@@ -1,13 +1,15 @@
 <template>
-  <div class="glass rounded-xl p-3 border-l-4 border-accent shadow cursor-pointer hover:shadow-lg transition">
-    <div class="font-medium text-sm">{{ data.title }}</div>
-    <div class="text-xs text-textSecondary">{{ data.description }}</div>
-    <div class="text-[10px] text-accent mt-2">Click to drill down</div>
+  <div
+    class="glass rounded-xl p-4 border-l-4 border-accent shadow-lg cursor-pointer hover:shadow-accent/20 hover:border-accent2 transition-all duration-200 min-w-[220px] max-w-[280px]"
+  >
+    <div class="font-medium text-sm text-white">{{ data.title }}</div>
+    <div class="text-xs text-textSecondary mt-1 leading-relaxed">{{ data.description }}</div>
+    <div class="text-[10px] text-accent/60 mt-2 flex items-center gap-1">
+      <span>▶</span> Click to expand
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { NodeProps } from "@vue-flow/core";
-
-defineProps<NodeProps>();
+defineProps<{ data: { title: string; description: string } }>();
 </script>

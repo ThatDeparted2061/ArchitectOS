@@ -8,66 +8,80 @@ export type ArchNode = {
   children: ArchNode[];
 };
 
+/**
+ * Build Vue Flow nodes/edges from architecture JSON.
+ * If focusId is set, only show that node and its children.
+ */
 export function buildGraph(root: ArchNode, focusId?: string) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-
   const focusPath: ArchNode[] = [];
-  let focusNode: ArchNode | null = null;
 
-  function findPath(node: ArchNode, targetId: string, path: ArchNode[]): boolean {
-    path.push(node);
-    if (node.id === targetId) {
-      focusNode = node;
-      return true;
-    }
-    for (const child of node.children) {
-      if (findPath(child, targetId, path)) return true;
-    }
-    path.pop();
-    return false;
-  }
+  let renderRoot: ArchNode = root;
 
+  // Find the focused node and path to it
   if (focusId) {
     findPath(root, focusId, focusPath);
+    const found = findNode(root, focusId);
+    if (found) renderRoot = found;
   }
 
-  function shouldRender(node: ArchNode) {
-    if (!focusId) return true;
-    if (focusPath.some((n) => n.id === node.id)) return true;
-    if (focusNode) {
-      return isDescendant(focusNode, node.id);
-    }
-    return false;
-  }
-
-  function isDescendant(node: ArchNode, targetId: string): boolean {
-    if (node.id === targetId) return true;
-    return node.children.some((child) => isDescendant(child, targetId));
-  }
-
-  function walk(node: ArchNode, x: number, y: number, parentId?: string) {
-    if (!shouldRender(node)) return;
-
-    nodes.push({
-      id: node.id,
-      position: { x, y },
-      type: "card",
-      data: { title: node.title, description: node.description },
-    });
-
-    if (parentId) {
-      edges.push({ id: `${parentId}-${node.id}`, source: parentId, target: node.id });
-    }
-
-    const spacingX = 260;
-    const spacingY = 160;
-    node.children.forEach((child, index) => {
-      walk(child, x + (index - (node.children.length - 1) / 2) * spacingX, y + spacingY, node.id);
-    });
-  }
-
-  walk(root, 0, 0);
+  // Lay out the render root and its children
+  layoutNode(renderRoot, 0, 0, undefined, nodes, edges);
 
   return { nodes, edges, focusPath };
+}
+
+function findNode(node: ArchNode, targetId: string): ArchNode | null {
+  if (node.id === targetId) return node;
+  for (const child of node.children) {
+    const found = findNode(child, targetId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findPath(node: ArchNode, targetId: string, path: ArchNode[]): boolean {
+  path.push(node);
+  if (node.id === targetId) return true;
+  for (const child of node.children) {
+    if (findPath(child, targetId, path)) return true;
+  }
+  path.pop();
+  return false;
+}
+
+function layoutNode(
+  node: ArchNode,
+  x: number,
+  y: number,
+  parentId: string | undefined,
+  nodes: Node[],
+  edges: Edge[]
+) {
+  nodes.push({
+    id: node.id,
+    position: { x, y },
+    type: "card",
+    data: { title: node.title, description: node.description },
+  });
+
+  if (parentId) {
+    edges.push({
+      id: `${parentId}-${node.id}`,
+      source: parentId,
+      target: node.id,
+      animated: true,
+      style: { stroke: "#4F8CFF", strokeWidth: 2 },
+    });
+  }
+
+  const spacingX = 300;
+  const spacingY = 180;
+  const totalWidth = (node.children.length - 1) * spacingX;
+  const startX = x - totalWidth / 2;
+
+  node.children.forEach((child, index) => {
+    layoutNode(child, startX + index * spacingX, y + spacingY, node.id, nodes, edges);
+  });
 }
