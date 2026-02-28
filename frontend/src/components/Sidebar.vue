@@ -39,9 +39,11 @@
           :key="m.id"
           :class="[
             'text-xs px-3 py-2 rounded-lg text-left transition',
+            m.disabled ? 'bg-surface/50 text-textSecondary/40 cursor-not-allowed' :
             store.mode === m.id ? 'bg-accent text-white' : 'bg-surface text-textSecondary hover:text-white'
           ]"
-          @click="store.mode = m.id"
+          @click="!m.disabled && (store.mode = m.id)"
+          :disabled="m.disabled"
         >
           <div class="font-medium">{{ m.id }}</div>
           <div class="text-[9px] opacity-70 mt-0.5">{{ m.desc }}</div>
@@ -82,6 +84,13 @@
       ✏️ Edit, ➕ add, or 🗑️ delete nodes directly on the graph. Changes are instant.
     </div>
 
+    <!-- Stats -->
+    <div v-if="store.architecture" class="text-[10px] text-textSecondary bg-surface rounded-lg p-2 space-y-0.5">
+      <div>📊 Nodes: {{ nodeCount }}</div>
+      <div>🌳 Max depth: {{ maxDepth }}</div>
+      <div>📝 Prompt: {{ store.lastPrompt.slice(0, 40) }}{{ store.lastPrompt.length > 40 ? '...' : '' }}</div>
+    </div>
+
     <div class="flex-1"></div>
 
     <!-- Reset -->
@@ -99,9 +108,23 @@ import { useAppStore } from "../store/app";
 const store = useAppStore();
 
 const modes = [
-  { id: "AI Decompose" as const, desc: "AI generates the full architecture" },
-  { id: "Hybrid" as const, desc: "AI generates, you edit/add/delete nodes" },
-  { id: "Manual Mode" as const, desc: "Build from scratch (coming soon)" },
+  { id: "AI Decompose" as const, desc: "AI generates the full architecture", disabled: false },
+  { id: "Hybrid" as const, desc: "AI generates, you edit/add/delete nodes", disabled: false },
+  { id: "Manual Mode" as const, desc: "Build from scratch (coming soon)", disabled: true },
 ];
 const syntaxOptions = ["Hide Syntax", "Show Pseudocode", "Show Real Code"] as const;
+
+function countNodes(node: any): number {
+  if (!node) return 0;
+  return 1 + (node.children || []).reduce((s: number, c: any) => s + countNodes(c), 0);
+}
+function getMaxDepth(node: any): number {
+  if (!node) return 0;
+  if (!node.children || node.children.length === 0) return node.depth || 1;
+  return Math.max(...node.children.map(getMaxDepth));
+}
+
+import { computed } from "vue";
+const nodeCount = computed(() => countNodes(store.architecture));
+const maxDepth = computed(() => getMaxDepth(store.architecture));
 </script>
