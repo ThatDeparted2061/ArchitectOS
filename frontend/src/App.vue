@@ -9,7 +9,15 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from "vue";
 import Sidebar from "./components/Sidebar.vue";
 import GraphCanvas from "./components/GraphCanvas.vue";
 import PromptPanel from "./components/PromptPanel.vue";
+import { useAppStore } from "./store/app";
+
+const store = useAppStore();
+
+onMounted(() => {
+  store.generate("Build an API Gateway");
+});
 </script>

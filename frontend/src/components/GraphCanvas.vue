@@ -3,6 +3,7 @@
     <VueFlow
       v-model:nodes="nodes"
       v-model:edges="edges"
+      :node-types="nodeTypes"
       class="h-full w-full"
       :fit-view-on-init="true"
       :min-zoom="0.2"
@@ -30,12 +31,14 @@ import { computed } from "vue";
 import { VueFlow } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { useAppStore } from "../store/app";
+import NodeCard from "./NodeCard.vue";
 
 const store = useAppStore();
 
 const nodes = computed(() => store.nodes);
 const edges = computed(() => store.edges);
 const breadcrumbs = computed(() => store.breadcrumbs);
+const nodeTypes = { card: NodeCard };
 
 const onNodeClick = (_: unknown, node: { id: string }) => {
   store.focusNode(node.id);
