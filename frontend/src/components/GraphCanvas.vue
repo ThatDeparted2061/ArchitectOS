@@ -39,7 +39,6 @@ import { VueFlow } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { useAppStore } from "../store/app";
 import NodeCard from "./NodeCard.vue";
-import type { NodeMouseEvent } from "@vue-flow/core";
 
 const store = useAppStore();
 
@@ -48,7 +47,23 @@ const flowEdges = computed(() => store.edges);
 const breadcrumbs = computed(() => store.breadcrumbs);
 const nodeTypes = { card: NodeCard };
 
-const onNodeClick = (event: NodeMouseEvent) => {
-  store.focusNode(event.node.id);
+const onNodeClick = (event: any) => {
+  const nodeId = event.node?.id;
+  if (!nodeId || !store.architecture) return;
+
+  // Check if node has children before drilling
+  const archNode = findInTree(store.architecture, nodeId);
+  if (archNode && archNode.children && archNode.children.length > 0) {
+    store.focusNode(nodeId);
+  }
 };
+
+function findInTree(node: any, id: string): any {
+  if (node.id === id) return node;
+  for (const child of node.children || []) {
+    const found = findInTree(child, id);
+    if (found) return found;
+  }
+  return null;
+}
 </script>
