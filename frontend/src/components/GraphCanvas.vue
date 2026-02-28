@@ -1,14 +1,14 @@
 <template>
   <div class="h-full w-full grid-dots relative">
     <VueFlow
-      v-model:nodes="flowNodes"
-      v-model:edges="flowEdges"
+      :nodes="flowNodes"
+      :edges="flowEdges"
       :node-types="nodeTypes"
       class="h-full w-full"
       :fit-view-on-init="true"
       :min-zoom="0.1"
       :max-zoom="3"
-      @node-click="onNodeClick"
+      @nodeClick="onNodeClick"
     >
       <Background :gap="24" :size="1" />
     </VueFlow>
@@ -39,6 +39,7 @@ import { VueFlow } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { useAppStore } from "../store/app";
 import NodeCard from "./NodeCard.vue";
+import type { NodeMouseEvent } from "@vue-flow/core";
 
 const store = useAppStore();
 
@@ -47,7 +48,7 @@ const flowEdges = computed(() => store.edges);
 const breadcrumbs = computed(() => store.breadcrumbs);
 const nodeTypes = { card: NodeCard };
 
-const onNodeClick = (_: unknown, node: { id: string }) => {
-  store.focusNode(node.id);
+const onNodeClick = (event: NodeMouseEvent) => {
+  store.focusNode(event.node.id);
 };
 </script>

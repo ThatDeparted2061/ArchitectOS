@@ -14,34 +14,56 @@
         max="4"
         v-model.number="store.level"
         class="w-full accent-accent"
-        @change="store.regenerate()"
       />
       <div class="flex justify-between text-[10px] text-textSecondary mt-1">
-        <span :class="{ 'text-accent': store.level === 1 }">Beginner</span>
-        <span :class="{ 'text-accent': store.level === 2 }">Intermediate</span>
-        <span :class="{ 'text-accent': store.level === 3 }">Advanced</span>
-        <span :class="{ 'text-accent': store.level === 4 }">Expert</span>
+        <span :class="{ 'text-accent font-bold': store.level === 1 }">Beginner</span>
+        <span :class="{ 'text-accent font-bold': store.level === 2 }">Intermediate</span>
+        <span :class="{ 'text-accent font-bold': store.level === 3 }">Advanced</span>
+        <span :class="{ 'text-accent font-bold': store.level === 4 }">Expert</span>
       </div>
+      <button
+        v-if="store.lastPrompt"
+        class="mt-2 w-full text-xs bg-accent/20 text-accent py-1 rounded-lg hover:bg-accent/30 transition"
+        @click="store.regenerate()"
+      >
+        Regenerate with level {{ store.level }}
+      </button>
     </div>
 
     <!-- Mode -->
     <div>
       <label class="text-sm text-textSecondary block mb-2">Mode</label>
-      <select v-model="store.mode" class="w-full bg-surface rounded-xl p-2 text-sm border border-white/5 outline-none">
-        <option>AI Decompose</option>
-        <option>Manual Mode</option>
-        <option>Hybrid</option>
-      </select>
+      <div class="flex flex-col gap-1">
+        <button
+          v-for="m in modes"
+          :key="m"
+          :class="[
+            'text-xs px-3 py-2 rounded-lg text-left transition',
+            store.mode === m ? 'bg-accent text-white' : 'bg-surface text-textSecondary hover:text-white'
+          ]"
+          @click="store.mode = m"
+        >
+          {{ m }}
+        </button>
+      </div>
     </div>
 
     <!-- Syntax Toggle -->
     <div>
       <label class="text-sm text-textSecondary block mb-2">Syntax</label>
-      <select v-model="store.syntax" class="w-full bg-surface rounded-xl p-2 text-sm border border-white/5 outline-none">
-        <option>Hide Syntax</option>
-        <option>Show Pseudocode</option>
-        <option>Show Real Code</option>
-      </select>
+      <div class="flex flex-col gap-1">
+        <button
+          v-for="s in syntaxOptions"
+          :key="s"
+          :class="[
+            'text-xs px-3 py-2 rounded-lg text-left transition',
+            store.syntax === s ? 'bg-accent2 text-white' : 'bg-surface text-textSecondary hover:text-white'
+          ]"
+          @click="store.syntax = s"
+        >
+          {{ s }}
+        </button>
+      </div>
     </div>
 
     <!-- AI Toggle -->
@@ -69,4 +91,7 @@
 <script setup lang="ts">
 import { useAppStore } from "../store/app";
 const store = useAppStore();
+
+const modes = ["AI Decompose", "Manual Mode", "Hybrid"];
+const syntaxOptions = ["Hide Syntax", "Show Pseudocode", "Show Real Code"];
 </script>
