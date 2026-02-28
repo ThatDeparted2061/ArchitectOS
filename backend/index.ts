@@ -12,8 +12,8 @@ app.use(express.json());
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const AI_ENABLED = process.env.AI_ENABLED === "true";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1";
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
 
 // ── Mock fallback ──────────────────────────────────────────────────
 function loadMockArchitecture() {
@@ -22,13 +22,13 @@ function loadMockArchitecture() {
   return JSON.parse(raw);
 }
 
-// ── AI generation via OpenAI ───────────────────────────────────────
+// ── AI generation via Ollama ───────────────────────────────────────
 async function generateWithAI(prompt: string, level: number) {
   const levelNames: Record<number, string> = {
-    1: "Beginner (high-level system overview only, max depth 1)",
-    2: "Intermediate (subsystems + data transformations, max depth 2)",
-    3: "Advanced (internal mechanisms like auth, validation, protocols, max depth 3)",
-    4: "Expert (implementation + algorithmic depth, max depth 4)",
+    1: "Beginner (high-level system overview only, max depth 1, 3-5 nodes)",
+    2: "Intermediate (subsystems + data transformations, max depth 2, 5-10 nodes)",
+    3: "Advanced (internal mechanisms like auth, validation, protocols, max depth 3, 10-20 nodes)",
+    4: "Expert (implementation + algorithmic depth, max depth 4, 15-30 nodes)",
   };
 
   const levelDesc = levelNames[level] || levelNames[2];
@@ -36,7 +36,7 @@ async function generateWithAI(prompt: string, level: number) {
   const systemPrompt = `You are ArchitectOS, an AI that decomposes software systems into architecture graphs.
 
 RULES:
-- Return ONLY valid JSON. No markdown, no explanations, no text outside JSON.
+- Return ONLY valid JSON. No markdown, no explanations, no text outside JSON. No backticks.
 - Use this exact schema recursively:
   { "id": "string", "title": "string", "description": "string", "depth": number, "children": [] }
 - "id" must be a unique kebab-case identifier.
@@ -45,47 +45,54 @@ RULES:
 - Do NOT exceed the maximum depth. Nodes at max depth must have empty children [].
 - Decompose logically: each node should represent a real architectural component.
 - Be thorough but concise. Descriptions should be 1 short sentence.
+- Return a single root object, not an array.
 
 Autonomy level: ${levelDesc}`;
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
+      model: OLLAMA_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
-      max_tokens: 4000,
+      stream: false,
+      format: "json",
+      options: {
+        temperature: 0.7,
+        num_predict: 4096,
+      },
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    console.error("OpenAI API error:", response.status, errText);
-    throw new Error(`OpenAI API error: ${response.status}`);
+    console.error("Ollama API error:", response.status, errText);
+    throw new Error(`Ollama API error: ${response.status}`);
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
+  const content = data.message?.content;
 
   if (!content) {
     throw new Error("Empty response from AI");
   }
 
-  // Strip markdown fences if the model wraps it
+  // Strip markdown fences if model wraps it
   const cleaned = content.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
 
   try {
-    return JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned);
+    // Validate basic structure
+    if (!parsed.id || !parsed.title) {
+      throw new Error("Missing required fields");
+    }
+    return parsed;
   } catch (e) {
     console.error("Failed to parse AI response:", cleaned);
-    throw new Error("AI returned invalid JSON");
+    throw new Error("AI returned invalid JSON. Try again.");
   }
 }
 
@@ -100,8 +107,8 @@ app.post("/generate", async (req, res) => {
   try {
     let result;
 
-    if (AI_ENABLED && OPENAI_API_KEY) {
-      console.log(`[AI] Generating for: "${prompt}" at level ${level}`);
+    if (AI_ENABLED) {
+      console.log(`[AI] Generating for: "${prompt}" at level ${level} using ${OLLAMA_MODEL}`);
       result = await generateWithAI(prompt, level);
       console.log(`[AI] Done.`);
     } else {
@@ -117,11 +124,16 @@ app.post("/generate", async (req, res) => {
 });
 
 // Health check
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", ai: AI_ENABLED && !!OPENAI_API_KEY });
+app.get("/health", async (_req, res) => {
+  let ollamaOk = false;
+  try {
+    const r = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+    ollamaOk = r.ok;
+  } catch {}
+  res.json({ status: "ok", ai: AI_ENABLED, ollama: ollamaOk, model: OLLAMA_MODEL });
 });
 
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
-  console.log(`AI: ${AI_ENABLED && OPENAI_API_KEY ? "ENABLED (" + OPENAI_MODEL + ")" : "DISABLED (using mock)"}`);
+  console.log(`AI: ${AI_ENABLED ? "ENABLED (Ollama: " + OLLAMA_MODEL + ")" : "DISABLED (using mock)"}`);
 });
