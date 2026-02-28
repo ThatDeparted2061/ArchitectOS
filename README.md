@@ -1,59 +1,80 @@
-# ArchitectOS — Local AI Architecture Visualizer
+# ArchitectOS
 
-ArchitectOS is a local-first, interactive architecture visualization tool. It converts a prompt into a layered architecture graph you can explore and drill into. It emphasizes **logic and architecture** over syntax.
+A local-first AI architecture visualizer. Describe any system and watch it decompose into an interactive, drillable graph.
+
+**Powered by Ollama (free, local AI). No API keys. No billing. No cloud.**
 
 ## Features
-- Prompt → Architecture Decomposition → Interactive Visual Explorer
-- Autonomy/abstraction slider (Beginner → Expert)
-- Syntax toggle (hidden by default)
-- Infinite zoomable canvas (Vue Flow)
-- AI on/off toggle (local mock fallback)
 
-## Tech Stack
-**Frontend:** Vue 3, TypeScript, Vite, Vue Flow, Pinia, Tailwind CSS
-**Backend:** Node.js, Express, TypeScript
+- **AI Decompose** — describe a system, AI generates the architecture graph
+- **Hybrid Mode** — AI generates, then edit/add/delete nodes inline
+- **Syntax Toggle** — hide code, show pseudocode, or show real code per node
+- **Autonomy Levels** — Beginner (overview) → Expert (deep implementation detail)
+- **Drill-down** — click any node to zoom into its children; breadcrumb navigation
+- **Fully local** — runs on your machine, no data leaves your system
 
-## Local Run
-From project root:
+## Requirements
+
+- [Node.js](https://nodejs.org/) 18+
+- [Ollama](https://ollama.com/) with a model installed
+
+## Setup
 
 ```bash
+# Install Ollama (if not already)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model
+ollama pull llama3.1:8b
+
+# Clone and install
+git clone https://github.com/ThatDeparted2061/ArchitectOS.git
+cd ArchitectOS
 npm install
+
+# Configure (optional — defaults work out of the box)
+cp backend/.env.example backend/.env
+
+# Run
 npm run dev
 ```
 
-Frontend: http://localhost:5173  
-Backend: http://localhost:3000
+Open http://localhost:5173
 
-## API
-**POST** `/generate`
+## Configuration
 
-```json
-{ "prompt": "Build an API Gateway", "level": 2 }
+Edit `backend/.env`:
+
+```
+AI_ENABLED=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
 ```
 
-Returns **Architecture JSON**:
+Swap `OLLAMA_MODEL` for any model you have: `codellama`, `mistral`, `llama3.1:70b`, etc.
 
-```json
-{
-  "id": "api-gateway",
-  "title": "API Gateway",
-  "description": "Entry point for client requests",
-  "depth": 1,
-  "children": []
-}
-```
+## Modes
 
-## Architecture JSON Rules
-- Strict JSON only
-- No extra text/markdown
-- Depth must match autonomy level
-- Logical decomposition only
+| Mode | Description |
+|------|-------------|
+| AI Decompose | Prompt → AI generates full architecture |
+| Hybrid | AI generates → you edit, add, or delete nodes |
+| Manual Mode | Build from scratch (coming soon) |
 
-## Graphs & Interaction
-- Click nodes to focus and drill down
-- Breadcrumbs allow back navigation
-- Smooth pan/zoom with subtle grid
+## Syntax Options
 
-## Notes
-- If `AI_ENABLED=true`, the backend uses the AI provider (placeholder).
-- If `AI_ENABLED=false`, it returns `mock/mockArchitecture.json`.
+| Option | What it shows |
+|--------|---------------|
+| Hide Syntax | Clean view — titles + descriptions only |
+| Show Pseudocode | Each node includes pseudocode logic |
+| Show Real Code | Each node includes real code snippets |
+
+## Stack
+
+- **Frontend:** Vue 3 + Vite + Vue Flow + Pinia + Tailwind CSS
+- **Backend:** Express + TypeScript
+- **AI:** Ollama (local LLM)
+
+## License
+
+MIT

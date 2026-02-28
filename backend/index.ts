@@ -68,7 +68,11 @@ RULES:
 
 Autonomy level: ${levelDesc}`;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+    signal: controller.signal,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -87,11 +91,13 @@ Autonomy level: ${levelDesc}`;
   });
 
   if (!response.ok) {
+    clearTimeout(timeout);
     const errText = await response.text();
     console.error("Ollama API error:", response.status, errText);
     throw new Error(`Ollama API error: ${response.status}`);
   }
 
+  clearTimeout(timeout);
   const data = await response.json();
   const content = data.message?.content;
 
