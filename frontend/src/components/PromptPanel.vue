@@ -1,5 +1,5 @@
 <template>
-  <div class="absolute top-6 right-6 w-[380px] glass rounded-xl p-4 z-40">
+  <div class="absolute bottom-6 right-6 w-[380px] glass rounded-xl p-3 z-40">
     <div class="flex gap-2">
       <input
         v-model="prompt"
@@ -12,12 +12,17 @@
         @click="submit"
         :disabled="store.loading"
       >
-        {{ store.loading ? "..." : "Generate" }}
+        {{ store.loading ? "..." : "Go" }}
       </button>
     </div>
-    <p class="text-[10px] text-textSecondary mt-2">
-      Level: {{ levelName }} · {{ store.aiEnabled ? "AI" : "Mock" }}
-    </p>
+    <div class="flex items-center justify-between mt-1.5">
+      <p class="text-[9px] text-textSecondary">
+        Level: {{ levelName }} · {{ store.mode }} · {{ store.syntax }}
+      </p>
+      <p class="text-[9px] text-textSecondary">
+        {{ store.aiEnabled ? "🟢 AI" : "⚪ Mock" }}
+      </p>
+    </div>
   </div>
 </template>
 
