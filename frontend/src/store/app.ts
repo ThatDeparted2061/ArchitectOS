@@ -70,6 +70,10 @@ export const useAppStore = defineStore("app", {
       uploadLoading: false,
       // History
       history: (saved?.history ?? []) as { prompt: string; timestamp: number }[],
+      // Code viewer
+      codeViewerVisible: false,
+      // Node AI
+      activeAINodeId: null as string | null,
     };
   },
   actions: {
@@ -255,6 +259,35 @@ export const useAppStore = defineStore("app", {
         this.error = e.message || "Failed to analyze codebase";
       } finally {
         this.uploadLoading = false;
+      }
+    },
+
+    // ── Code viewer ───────────────────────────────────────────────
+    toggleCodeViewer() {
+      this.codeViewerVisible = !this.codeViewerVisible;
+    },
+
+    // ── Node AI ──────────────────────────────────────────────────
+    openNodeAI(nodeId: string) {
+      this.activeAINodeId = nodeId;
+    },
+
+    closeNodeAI() {
+      this.activeAINodeId = null;
+    },
+
+    updateNodeFromAI(updatedNode: any) {
+      if (!this.architecture || !updatedNode?.id) return;
+      const arch = deepClone(this.architecture);
+      const node = findInTree(arch, updatedNode.id);
+      if (node) {
+        if (updatedNode.title) node.title = updatedNode.title;
+        if (updatedNode.description) node.description = updatedNode.description;
+        if (updatedNode.code !== undefined) node.code = updatedNode.code;
+        this.architecture = arch;
+        this.readmeStale = true;
+        this._rebuildGraph();
+        this._persist();
       }
     },
 

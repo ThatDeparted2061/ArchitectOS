@@ -288,6 +288,71 @@ app.post("/file-structure", (req, res) => {
   return res.json({ files });
 });
 
+// Node AI chat
+app.post("/node-chat", async (req, res) => {
+  const { node, message, history } = req.body || {};
+  if (!node || !message) return res.status(400).json({ error: "Need node and message" });
+
+  try {
+    const systemPrompt = `You are an AI architecture assistant. You are focused on ONE specific node in an architecture graph.
+
+Node: "${node.title}"
+Description: "${node.description}"
+${node.code ? `Code:\n${node.code}` : ""}
+
+RULES:
+- Answer questions ONLY about this specific node.
+- If the user asks you to change something, return a JSON field "updatedNode" with the modified node (same schema: id, title, description, code).
+- For explanations, just give clear text. Be concise.
+- If the user asks to change the title, description, or code, include "updatedNode" in your response.
+- Return JSON: { "reply": "your text answer", "updatedNode": null | { id, title, description, code } }`;
+
+    const chatHistory = (history || []).map((m: any) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      signal: controller.signal,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...chatHistory,
+          { role: "user", content: message },
+        ],
+        stream: false,
+        format: "json",
+        options: { temperature: 0.7, num_predict: 2048 },
+      }),
+    });
+
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error("Ollama error");
+
+    const data = await response.json();
+    const content = data.message?.content || "";
+    const cleaned = content.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      return res.json({
+        reply: parsed.reply || parsed.answer || cleaned,
+        updatedNode: parsed.updatedNode || null,
+      });
+    } catch {
+      return res.json({ reply: cleaned, updatedNode: null });
+    }
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // Health
 app.get("/health", async (_req, res) => {
   let ollamaOk = false;

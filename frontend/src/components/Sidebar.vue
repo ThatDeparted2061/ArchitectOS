@@ -110,7 +110,6 @@ const store = useAppStore();
 const modes = [
   { id: "AI Decompose" as const, desc: "AI generates the full architecture", disabled: false },
   { id: "Hybrid" as const, desc: "AI generates, you edit/add/delete nodes", disabled: false },
-  { id: "Manual Mode" as const, desc: "Build from scratch (coming soon)", disabled: true },
 ];
 const syntaxOptions = ["Hide Syntax", "Show Pseudocode", "Show Real Code"] as const;
 
