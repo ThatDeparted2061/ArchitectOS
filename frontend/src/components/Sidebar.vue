@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-[280px] h-full p-5 glass flex flex-col gap-6 border-r border-white/5">
+  <aside class="w-[280px] h-full p-5 glass flex flex-col gap-6 border-r border-white/5 overflow-y-auto">
     <div>
       <h2 class="text-xl font-semibold text-accent">ArchitectOS</h2>
       <p class="text-textSecondary text-xs mt-1">Local AI Architecture Visualizer</p>
@@ -36,14 +36,15 @@
       <div class="flex flex-col gap-1">
         <button
           v-for="m in modes"
-          :key="m"
+          :key="m.id"
           :class="[
             'text-xs px-3 py-2 rounded-lg text-left transition',
-            store.mode === m ? 'bg-accent text-white' : 'bg-surface text-textSecondary hover:text-white'
+            store.mode === m.id ? 'bg-accent text-white' : 'bg-surface text-textSecondary hover:text-white'
           ]"
-          @click="store.mode = m"
+          @click="store.mode = m.id"
         >
-          {{ m }}
+          <div class="font-medium">{{ m.id }}</div>
+          <div class="text-[9px] opacity-70 mt-0.5">{{ m.desc }}</div>
         </button>
       </div>
     </div>
@@ -76,6 +77,11 @@
       </label>
     </div>
 
+    <!-- Hybrid hint -->
+    <div v-if="store.mode === 'Hybrid' && store.architecture" class="text-[10px] text-yellow-400/80 bg-yellow-400/10 rounded-lg p-2">
+      ✏️ Edit, ➕ add, or 🗑️ delete nodes directly on the graph. Changes are instant.
+    </div>
+
     <div class="flex-1"></div>
 
     <!-- Reset -->
@@ -92,6 +98,10 @@
 import { useAppStore } from "../store/app";
 const store = useAppStore();
 
-const modes = ["AI Decompose", "Manual Mode", "Hybrid"];
-const syntaxOptions = ["Hide Syntax", "Show Pseudocode", "Show Real Code"];
+const modes = [
+  { id: "AI Decompose" as const, desc: "AI generates the full architecture" },
+  { id: "Hybrid" as const, desc: "AI generates, you edit/add/delete nodes" },
+  { id: "Manual Mode" as const, desc: "Build from scratch (coming soon)" },
+];
+const syntaxOptions = ["Hide Syntax", "Show Pseudocode", "Show Real Code"] as const;
 </script>

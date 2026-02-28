@@ -15,6 +15,18 @@ const AI_ENABLED = process.env.AI_ENABLED === "true";
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
 
+// ── Sanitize node tree ─────────────────────────────────────────────
+function sanitizeNode(node: any): any {
+  return {
+    id: node?.id || "node-" + Math.random().toString(36).slice(2, 8),
+    title: node?.title || "Untitled",
+    description: node?.description || "",
+    depth: node?.depth || 1,
+    code: node?.code || "",
+    children: Array.isArray(node?.children) ? node.children.map(sanitizeNode) : [],
+  };
+}
+
 // ── Mock fallback ──────────────────────────────────────────────────
 function loadMockArchitecture() {
   const filePath = path.join(process.cwd(), "mock", "mockArchitecture.json");
@@ -94,7 +106,7 @@ Autonomy level: ${levelDesc}`;
     if (!parsed.id || !parsed.title) {
       throw new Error("Missing required fields");
     }
-    return parsed;
+    return sanitizeNode(parsed);
   } catch (e) {
     console.error("Failed to parse AI response:", cleaned);
     throw new Error("AI returned invalid JSON. Try again.");
