@@ -6,21 +6,23 @@
       :node-types="nodeTypes"
       class="h-full w-full"
       :fit-view-on-init="true"
-      :min-zoom="0.1"
+      :min-zoom="0.05"
       :max-zoom="3"
+      :default-viewport="{ zoom: 0.8, x: 0, y: 0 }"
       @nodeClick="onNodeClick"
     >
       <Background :gap="24" :size="1" />
+      <MiniMap
+        :pannable="true"
+        :zoomable="true"
+        class="!bg-surface/80 !border-white/10 !rounded-xl"
+      />
+      <Controls class="!bg-surface/80 !border-white/10 !rounded-xl" />
     </VueFlow>
 
     <!-- Breadcrumbs -->
-    <div v-if="breadcrumbs.length" class="absolute top-6 left-6 glass px-4 py-2 rounded-xl text-sm z-40 flex items-center gap-1">
-      <button
-        class="text-accent hover:text-white transition mr-2"
-        @click="store.goBack()"
-      >
-        ← Back
-      </button>
+    <div v-if="breadcrumbs.length" class="absolute top-4 left-4 glass px-4 py-2 rounded-xl text-sm z-40 flex items-center gap-1">
+      <button class="text-accent hover:text-white transition mr-2" @click="store.goBack()">← Back</button>
       <span
         v-for="(crumb, idx) in breadcrumbs"
         :key="crumb.id"
@@ -37,6 +39,8 @@
 import { computed } from "vue";
 import { VueFlow } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
+import { MiniMap } from "@vue-flow/minimap";
+import { Controls } from "@vue-flow/controls";
 import { useAppStore } from "../store/app";
 import NodeCard from "./NodeCard.vue";
 
@@ -50,8 +54,6 @@ const nodeTypes = { card: NodeCard };
 const onNodeClick = (event: any) => {
   const nodeId = event.node?.id;
   if (!nodeId || !store.architecture) return;
-
-  // Check if node has children before drilling
   const archNode = findInTree(store.architecture, nodeId);
   if (archNode && archNode.children && archNode.children.length > 0) {
     store.focusNode(nodeId);

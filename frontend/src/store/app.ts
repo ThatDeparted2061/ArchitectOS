@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { generateArchitecture } from "../services/api";
+import { generateArchitecture, generateReadme, getFileStructure, analyzeCodebase } from "../services/api";
 import { buildGraph, type ArchNode } from "../services/graph";
 
 function deepClone<T>(obj: T): T {
@@ -24,22 +24,79 @@ function findParent(node: ArchNode, id: string): ArchNode | null {
   return null;
 }
 
+// ── LocalStorage helpers ───────────────────────────────────────────
+const STORAGE_KEY = "architectos-state";
+
+function saveToStorage(data: any) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {}
+}
+
+function loadFromStorage(): any {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const useAppStore = defineStore("app", {
-  state: () => ({
-    level: 2,
-    mode: "AI Decompose" as "AI Decompose" | "Manual Mode" | "Hybrid",
-    syntax: "Hide Syntax" as "Hide Syntax" | "Show Pseudocode" | "Show Real Code",
-    aiEnabled: true,
-    architecture: null as ArchNode | null,
-    nodes: [] as any[],
-    edges: [] as any[],
-    breadcrumbs: [] as ArchNode[],
-    focusId: null as string | null,
-    loading: false,
-    error: null as string | null,
-    lastPrompt: "",
-  }),
+  state: () => {
+    const saved = loadFromStorage();
+    return {
+      level: saved?.level ?? 2,
+      mode: (saved?.mode ?? "AI Decompose") as "AI Decompose" | "Manual Mode" | "Hybrid",
+      syntax: (saved?.syntax ?? "Hide Syntax") as "Hide Syntax" | "Show Pseudocode" | "Show Real Code",
+      aiEnabled: saved?.aiEnabled ?? true,
+      architecture: (saved?.architecture ?? null) as ArchNode | null,
+      nodes: [] as any[],
+      edges: [] as any[],
+      breadcrumbs: [] as ArchNode[],
+      focusId: (saved?.focusId ?? null) as string | null,
+      loading: false,
+      error: null as string | null,
+      lastPrompt: saved?.lastPrompt ?? "",
+      // README
+      readme: (saved?.readme ?? "") as string,
+      readmeStale: false,
+      readmeLoading: false,
+      readmeVisible: false,
+      // File structure
+      fileStructure: (saved?.fileStructure ?? []) as string[],
+      fileStructureVisible: false,
+      // Upload
+      uploadLoading: false,
+      // History
+      history: (saved?.history ?? []) as { prompt: string; timestamp: number }[],
+    };
+  },
   actions: {
+    _persist() {
+      saveToStorage({
+        level: this.level,
+        mode: this.mode,
+        syntax: this.syntax,
+        aiEnabled: this.aiEnabled,
+        architecture: this.architecture,
+        focusId: this.focusId,
+        lastPrompt: this.lastPrompt,
+        readme: this.readme,
+        fileStructure: this.fileStructure,
+        history: this.history.slice(-20),
+      });
+    },
+
+    _rebuildGraph() {
+      if (!this.architecture) return;
+      const { nodes, edges, focusPath } = buildGraph(this.architecture, this.focusId || undefined);
+      this.nodes = nodes;
+      this.edges = edges;
+      this.breadcrumbs = focusPath;
+    },
+
+    // ── Generate ─────────────────────────────────────────────────
     async generate(prompt: string) {
       if (!prompt.trim()) return;
       this.loading = true;
@@ -50,39 +107,47 @@ export const useAppStore = defineStore("app", {
         const data = await generateArchitecture(prompt, this.level, this.syntax);
         this.architecture = data;
         this.focusId = null;
+        this.readmeStale = true;
+        this.readme = "";
+        this.fileStructure = [];
         this._rebuildGraph();
+
+        // Add to history
+        this.history.push({ prompt, timestamp: Date.now() });
+        if (this.history.length > 20) this.history.shift();
+
+        this._persist();
       } catch (e: any) {
         this.error = e.message || "Failed to generate";
-        console.error(e);
       } finally {
         this.loading = false;
       }
     },
 
     async regenerate() {
-      if (this.lastPrompt) {
-        await this.generate(this.lastPrompt);
-      }
+      if (this.lastPrompt) await this.generate(this.lastPrompt);
     },
 
+    // ── Navigation ───────────────────────────────────────────────
     focusNode(id: string) {
       if (!this.architecture) return;
       this.focusId = id;
       this._rebuildGraph();
+      this._persist();
     },
 
     goBack() {
       if (!this.architecture) return;
       if (this.breadcrumbs.length > 1) {
-        const parent = this.breadcrumbs[this.breadcrumbs.length - 2];
-        this.focusNode(parent.id);
+        this.focusNode(this.breadcrumbs[this.breadcrumbs.length - 2].id);
       } else {
         this.focusId = null;
         this._rebuildGraph();
+        this._persist();
       }
     },
 
-    // ── Hybrid mode actions ──────────────────────────────────────
+    // ── Hybrid editing ───────────────────────────────────────────
     editNode(id: string, title: string, description: string) {
       if (!this.architecture) return;
       const arch = deepClone(this.architecture);
@@ -91,13 +156,14 @@ export const useAppStore = defineStore("app", {
         node.title = title;
         node.description = description;
         this.architecture = arch;
+        this.readmeStale = true;
         this._rebuildGraph();
+        this._persist();
       }
     },
 
     deleteNode(id: string) {
       if (!this.architecture) return;
-      // Can't delete root
       if (this.architecture.id === id) {
         this.error = "Cannot delete root node";
         return;
@@ -107,11 +173,10 @@ export const useAppStore = defineStore("app", {
       if (parent) {
         parent.children = (parent.children || []).filter((c) => c.id !== id);
         this.architecture = arch;
-        // If we're focused on the deleted node, go back
-        if (this.focusId === id) {
-          this.focusId = parent.id;
-        }
+        this.readmeStale = true;
+        if (this.focusId === id) this.focusId = parent.id;
         this._rebuildGraph();
+        this._persist();
       }
     },
 
@@ -120,11 +185,10 @@ export const useAppStore = defineStore("app", {
       const arch = deepClone(this.architecture);
       const parent = findInTree(arch, parentId);
       if (parent) {
-        const newId = "new-" + Math.random().toString(36).slice(2, 8);
         const newNode: ArchNode = {
-          id: newId,
+          id: "new-" + Math.random().toString(36).slice(2, 8),
           title: "New Node",
-          description: "Click edit to describe this component",
+          description: "Click edit to describe",
           depth: parent.depth + 1,
           children: [],
           code: "",
@@ -132,10 +196,69 @@ export const useAppStore = defineStore("app", {
         if (!parent.children) parent.children = [];
         parent.children.push(newNode);
         this.architecture = arch;
+        this.readmeStale = true;
         this._rebuildGraph();
+        this._persist();
       }
     },
 
+    // ── README ───────────────────────────────────────────────────
+    async refreshReadme() {
+      if (!this.architecture) return;
+      this.readmeLoading = true;
+      try {
+        this.readme = await generateReadme(this.architecture, this.lastPrompt);
+        this.readmeStale = false;
+        this._persist();
+      } catch (e: any) {
+        this.error = "Failed to generate README: " + e.message;
+      } finally {
+        this.readmeLoading = false;
+      }
+    },
+
+    toggleReadme() {
+      this.readmeVisible = !this.readmeVisible;
+    },
+
+    // ── File structure ───────────────────────────────────────────
+    async loadFileStructure() {
+      if (!this.architecture) return;
+      try {
+        this.fileStructure = await getFileStructure(this.architecture);
+        this.fileStructureVisible = true;
+        this._persist();
+      } catch (e: any) {
+        this.error = "Failed to generate file structure";
+      }
+    },
+
+    toggleFileStructure() {
+      this.fileStructureVisible = !this.fileStructureVisible;
+    },
+
+    // ── Upload ───────────────────────────────────────────────────
+    async uploadCodebase(files: { path: string; content: string }[]) {
+      this.uploadLoading = true;
+      this.error = null;
+      try {
+        const data = await analyzeCodebase(files);
+        this.architecture = data;
+        this.focusId = null;
+        this.lastPrompt = "[Uploaded Codebase]";
+        this.readmeStale = true;
+        this.readme = "";
+        this.fileStructure = [];
+        this._rebuildGraph();
+        this._persist();
+      } catch (e: any) {
+        this.error = e.message || "Failed to analyze codebase";
+      } finally {
+        this.uploadLoading = false;
+      }
+    },
+
+    // ── Reset ────────────────────────────────────────────────────
     reset() {
       this.level = 2;
       this.mode = "AI Decompose";
@@ -148,15 +271,12 @@ export const useAppStore = defineStore("app", {
       this.edges = [];
       this.breadcrumbs = [];
       this.lastPrompt = "";
-    },
-
-    // ── Internal ─────────────────────────────────────────────────
-    _rebuildGraph() {
-      if (!this.architecture) return;
-      const { nodes, edges, focusPath } = buildGraph(this.architecture, this.focusId || undefined);
-      this.nodes = nodes;
-      this.edges = edges;
-      this.breadcrumbs = focusPath;
+      this.readme = "";
+      this.readmeStale = false;
+      this.readmeVisible = false;
+      this.fileStructure = [];
+      this.fileStructureVisible = false;
+      this._persist();
     },
   },
 });
