@@ -59,7 +59,7 @@
             'text-xs px-3 py-2 rounded-lg text-left transition',
             store.syntax === s ? 'bg-accent2 text-white' : 'bg-surface text-textSecondary hover:text-white'
           ]"
-          @click="store.syntax = s"
+          @click="store.syntax = s; store.regenerate()"
         >
           {{ s }}
         </button>

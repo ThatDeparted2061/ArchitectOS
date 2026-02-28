@@ -1,8 +1,14 @@
 <template>
   <Handle type="target" :position="Position.Top" style="visibility: hidden" />
-  <div class="glass rounded-xl p-4 border-l-4 border-accent shadow-lg min-w-[220px] max-w-[280px] hover:shadow-accent/20 hover:border-accent2 transition-all duration-200">
+  <div class="glass rounded-xl p-4 border-l-4 border-accent shadow-lg min-w-[220px] max-w-[320px] hover:shadow-accent/20 hover:border-accent2 transition-all duration-200">
     <div class="font-medium text-sm text-white">{{ data.title }}</div>
     <div class="text-xs text-textSecondary mt-1 leading-relaxed">{{ data.description }}</div>
+
+    <!-- Code block -->
+    <div v-if="data.code" class="mt-2 bg-black/40 rounded-lg p-2 overflow-x-auto">
+      <pre class="text-[10px] text-green-400 font-mono leading-tight whitespace-pre-wrap">{{ data.code }}</pre>
+    </div>
+
     <div v-if="hasChildren" class="text-[10px] text-accent mt-2">▶ Click to expand</div>
     <div v-else class="text-[10px] text-textSecondary/40 mt-2">— leaf node —</div>
   </div>
@@ -14,7 +20,7 @@ import { computed } from "vue";
 import { Handle, Position } from "@vue-flow/core";
 import { useAppStore } from "../store/app";
 
-const props = defineProps<{ id: string; data: { title: string; description: string } }>();
+const props = defineProps<{ id: string; data: { title: string; description: string; code?: string } }>();
 const store = useAppStore();
 
 const hasChildren = computed(() => {

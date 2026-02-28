@@ -63,7 +63,7 @@ function layoutNode(
     id: node.id,
     position: { x, y },
     type: "card",
-    data: { title: node.title, description: node.description },
+    data: { title: node.title, description: node.description, code: (node as any).code || "" },
   });
 
   if (parentId) {

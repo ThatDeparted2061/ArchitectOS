@@ -23,7 +23,7 @@ function loadMockArchitecture() {
 }
 
 // ── AI generation via Ollama ───────────────────────────────────────
-async function generateWithAI(prompt: string, level: number) {
+async function generateWithAI(prompt: string, level: number, syntax: string) {
   const levelNames: Record<number, string> = {
     1: "Beginner (high-level system overview only, max depth 1, 3-5 nodes)",
     2: "Intermediate (subsystems + data transformations, max depth 2, 5-10 nodes)",
@@ -33,19 +33,26 @@ async function generateWithAI(prompt: string, level: number) {
 
   const levelDesc = levelNames[level] || levelNames[2];
 
+  let syntaxInstruction = "";
+  if (syntax === "Show Pseudocode") {
+    syntaxInstruction = `\n- Add a "code" field to EVERY node containing pseudocode (2-8 lines) showing the logic of that component.`;
+  } else if (syntax === "Show Real Code") {
+    syntaxInstruction = `\n- Add a "code" field to EVERY node containing real, working code (language relevant to the system, 3-12 lines) implementing that component's core logic.`;
+  }
+
   const systemPrompt = `You are ArchitectOS, an AI that decomposes software systems into architecture graphs.
 
 RULES:
 - Return ONLY valid JSON. No markdown, no explanations, no text outside JSON. No backticks.
 - Use this exact schema recursively:
-  { "id": "string", "title": "string", "description": "string", "depth": number, "children": [] }
+  { "id": "string", "title": "string", "description": "string", "depth": number, "children": []${syntax !== "Hide Syntax" ? ', "code": "string"' : ""} }
 - "id" must be a unique kebab-case identifier.
 - "depth" starts at 1 for the root and increments for each child level.
 - Maximum depth allowed: ${level}
 - Do NOT exceed the maximum depth. Nodes at max depth must have empty children [].
 - Decompose logically: each node should represent a real architectural component.
 - Be thorough but concise. Descriptions should be 1 short sentence.
-- Return a single root object, not an array.
+- Return a single root object, not an array.${syntaxInstruction}
 
 Autonomy level: ${levelDesc}`;
 
@@ -80,12 +87,10 @@ Autonomy level: ${levelDesc}`;
     throw new Error("Empty response from AI");
   }
 
-  // Strip markdown fences if model wraps it
   const cleaned = content.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
 
   try {
     const parsed = JSON.parse(cleaned);
-    // Validate basic structure
     if (!parsed.id || !parsed.title) {
       throw new Error("Missing required fields");
     }
@@ -98,7 +103,7 @@ Autonomy level: ${levelDesc}`;
 
 // ── Routes ─────────────────────────────────────────────────────────
 app.post("/generate", async (req, res) => {
-  const { prompt, level } = req.body || {};
+  const { prompt, level, syntax } = req.body || {};
 
   if (!prompt || typeof level !== "number") {
     return res.status(400).json({ error: "Invalid request. Need { prompt: string, level: number }" });
@@ -108,8 +113,8 @@ app.post("/generate", async (req, res) => {
     let result;
 
     if (AI_ENABLED) {
-      console.log(`[AI] Generating for: "${prompt}" at level ${level} using ${OLLAMA_MODEL}`);
-      result = await generateWithAI(prompt, level);
+      console.log(`[AI] Generating for: "${prompt}" at level ${level}, syntax: ${syntax || "Hide Syntax"}`);
+      result = await generateWithAI(prompt, level, syntax || "Hide Syntax");
       console.log(`[AI] Done.`);
     } else {
       console.log(`[Mock] Returning mock architecture`);

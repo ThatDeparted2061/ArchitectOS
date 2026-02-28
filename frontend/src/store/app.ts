@@ -5,7 +5,7 @@ import { buildGraph, type ArchNode } from "../services/graph";
 export const useAppStore = defineStore("app", {
   state: () => ({
     level: 2,
-    mode: "AI Decompose",
+    mode: "AI Decompose" as "AI Decompose" | "Manual Mode" | "Hybrid",
     syntax: "Hide Syntax" as "Hide Syntax" | "Show Pseudocode" | "Show Real Code",
     aiEnabled: true,
     architecture: null as ArchNode | null,
@@ -25,7 +25,7 @@ export const useAppStore = defineStore("app", {
       this.lastPrompt = prompt;
 
       try {
-        const data = await generateArchitecture(prompt, this.level);
+        const data = await generateArchitecture(prompt, this.level, this.syntax);
         this.architecture = data;
         this.focusId = null;
         const { nodes, edges, focusPath } = buildGraph(data);
