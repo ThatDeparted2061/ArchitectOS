@@ -4,6 +4,9 @@ A local-first AI architecture visualizer. Describe any system and watch it decom
 
 **Powered by Ollama (free, local AI). No API keys. No billing. No cloud.**
 
+**Frontend:** Vue 3 + Vite
+**Backend:** Express.js (TS) with integrated Ollama AI
+
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![AI](https://img.shields.io/badge/AI-Ollama-green)
 ![Framework](https://img.shields.io/badge/frontend-Vue%203-brightgreen)

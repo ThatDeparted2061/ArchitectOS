@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch index.ts"
+    "dev": "tsx watch index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@types/multer": "^2.0.0",
