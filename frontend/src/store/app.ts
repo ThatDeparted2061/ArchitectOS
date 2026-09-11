@@ -1,11 +1,17 @@
 import { defineStore } from "pinia";
-import { generateArchitecture, generateReadme, getFileStructure, analyzeCodebase } from "../services/api";
-import { buildGraph, type ArchNode } from "../services/graph";
+import { generateArchitecture, generateReadme, getFileStructure, analyzeCodebase, getGraphData } from "../services/api";
+import { buildGraph, buildDependencyGraph, type ArchNode, type ArchEdge } from "../services/graph";
 
+/**
+ * Deep clone helper to ensure immutable state mutation for Pinia reactive trees
+ */
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
+/**
+ * Recursively find node by ID in architecture tree
+ */
 function findInTree(node: ArchNode, id: string): ArchNode | null {
   if (node.id === id) return node;
   for (const child of node.children || []) {
@@ -15,6 +21,9 @@ function findInTree(node: ArchNode, id: string): ArchNode | null {
   return null;
 }
 
+/**
+ * Recursively find parent node of a given child ID
+ */
 function findParent(node: ArchNode, id: string): ArchNode | null {
   for (const child of node.children || []) {
     if (child.id === id) return node;
@@ -24,7 +33,7 @@ function findParent(node: ArchNode, id: string): ArchNode | null {
   return null;
 }
 
-// ── LocalStorage helpers ───────────────────────────────────────────
+// ── LocalStorage persistence helpers ─────────────────────────────────
 const STORAGE_KEY = "architectos-state";
 
 function saveToStorage(data: any) {
@@ -50,13 +59,20 @@ export const useAppStore = defineStore("app", {
       mode: (saved?.mode ?? "AI Decompose") as "AI Decompose" | "Manual Mode" | "Hybrid",
       syntax: (saved?.syntax ?? "Hide Syntax") as "Hide Syntax" | "Show Pseudocode" | "Show Real Code",
       aiEnabled: saved?.aiEnabled ?? true,
-      architecture: (saved?.architecture ?? null) as ArchNode | null,
+      architecture: null as ArchNode | null,
+      savedArchitecture: (saved?.architecture ?? null) as ArchNode | null,
+      // Cross-node semantic edges (imports, function calls, DB access, event streams)
+      architectureEdges: (saved?.architectureEdges ?? []) as ArchEdge[],
       nodes: [] as any[],
       edges: [] as any[],
       breadcrumbs: [] as ArchNode[],
       focusId: (saved?.focusId ?? null) as string | null,
+      // Layout direction: 'TB' = Top-to-Bottom (standard Tree), 'LR' = Left-to-Right
+      graphDirection: (saved?.graphDirection ?? "TB") as "TB" | "LR",
       loading: false,
+      abortController: null as AbortController | null,
       error: null as string | null,
+      promptPanelVisible: saved?.promptPanelVisible ?? true,
       lastPrompt: saved?.lastPrompt ?? "",
       // README
       readme: (saved?.readme ?? "") as string,
@@ -74,9 +90,25 @@ export const useAppStore = defineStore("app", {
       codeViewerVisible: false,
       // Node AI
       activeAINodeId: null as string | null,
+      viewMode: (saved?.viewMode ?? "architecture") as "architecture" | "dependency",
+      sidebarWidth: saved?.sidebarWidth ?? 300,
+      sidebarCollapsed: saved?.sidebarCollapsed ?? false,
+      // Collapsed subgraph subsystem IDs for compact overview mode
+      collapsedSubsystems: (saved?.collapsedSubsystems ? new Set<string>(saved.collapsedSubsystems) : new Set<string>()) as Set<string>,
+      // Maximum columns allowed per subsystem 2D grid
+      maxGridCols: (saved?.maxGridCols ?? 3) as number,
     };
   },
   actions: {
+    restoreSession() {
+      if (this.savedArchitecture) {
+        this.architecture = this.savedArchitecture;
+        this.focusId = null;
+        this._rebuildGraph();
+        this._persist();
+      }
+    },
+
     _persist() {
       saveToStorage({
         level: this.level,
@@ -84,32 +116,132 @@ export const useAppStore = defineStore("app", {
         syntax: this.syntax,
         aiEnabled: this.aiEnabled,
         architecture: this.architecture,
+        architectureEdges: this.architectureEdges,
         focusId: this.focusId,
+        graphDirection: this.graphDirection,
         lastPrompt: this.lastPrompt,
         readme: this.readme,
         fileStructure: this.fileStructure,
         history: this.history.slice(-20),
+        viewMode: this.viewMode,
+        promptPanelVisible: this.promptPanelVisible,
+        sidebarWidth: this.sidebarWidth,
+        sidebarCollapsed: this.sidebarCollapsed,
+        collapsedSubsystems: Array.from(this.collapsedSubsystems),
+        maxGridCols: this.maxGridCols,
       });
     },
 
-    _rebuildGraph() {
+    /**
+     * Rebuild the Vue Flow graph nodes and edges with 2D dynamic grid layout and cross-node connection lines
+     */
+    async _rebuildGraph() {
       if (!this.architecture) return;
-      const { nodes, edges, focusPath } = buildGraph(this.architecture, this.focusId || undefined);
-      this.nodes = nodes;
-      this.edges = edges;
-      this.breadcrumbs = focusPath;
+      if (this.viewMode === "dependency") {
+        try {
+          const rawGraph = await getGraphData();
+          const { nodes, edges } = buildDependencyGraph(rawGraph.nodes, rawGraph.edges);
+          this.nodes = nodes;
+          this.edges = edges;
+          this.breadcrumbs = [];
+        } catch (err) {
+          console.error("Failed to build dependency graph:", err);
+        }
+      } else {
+        // Build true hierarchical tree layout passing direction, cross-node edges, collapsed state, and maxGridCols
+        const { nodes, edges, focusPath } = buildGraph(
+          this.architecture,
+          this.focusId || undefined,
+          this.graphDirection,
+          this.architectureEdges,
+          this.collapsedSubsystems,
+          this.maxGridCols
+        );
+        this.nodes = nodes;
+        this.edges = edges;
+        this.breadcrumbs = focusPath;
+      }
     },
 
-    // ── Generate ─────────────────────────────────────────────────
+    /**
+     * Toggle collapse state for a specific subsystem container
+     */
+    toggleSubsystemCollapse(id: string) {
+      if (this.collapsedSubsystems.has(id)) {
+        this.collapsedSubsystems.delete(id);
+      } else {
+        this.collapsedSubsystems.add(id);
+      }
+      this._rebuildGraph();
+      this._persist();
+    },
+
+    /**
+     * Collapse all top-level subsystem containers into compact overview boxes
+     */
+    collapseAllSubsystems() {
+      if (!this.architecture || !this.architecture.children) return;
+      this.architecture.children.forEach((c) => this.collapsedSubsystems.add(c.id));
+      this._rebuildGraph();
+      this._persist();
+    },
+
+    /**
+     * Expand all subsystem containers into multi-column 2D grids
+     */
+    expandAllSubsystems() {
+      this.collapsedSubsystems.clear();
+      this._rebuildGraph();
+      this._persist();
+    },
+
+    /**
+     * Update maximum columns allowed per subsystem container grid
+     */
+    setMaxGridCols(cols: number) {
+      this.maxGridCols = cols;
+      this._rebuildGraph();
+      this._persist();
+    },
+
+    /**
+     * Toggle layout orientation between Top-Down (TB) and Left-Right (LR) tree
+     */
+    async toggleGraphDirection() {
+      this.graphDirection = this.graphDirection === "TB" ? "LR" : "TB";
+      await this._rebuildGraph();
+      this._persist();
+    },
+
+    async toggleViewMode() {
+      this.viewMode = this.viewMode === "architecture" ? "dependency" : "architecture";
+      await this._rebuildGraph();
+      this._persist();
+    },
+
+    // ── Generate Architecture ─────────────────────────────────────
     async generate(prompt: string) {
       if (!prompt.trim()) return;
+      if (this.abortController) {
+        this.abortController.abort();
+      }
+      this.abortController = new AbortController();
       this.loading = true;
       this.error = null;
       this.lastPrompt = prompt;
 
       try {
-        const data = await generateArchitecture(prompt, this.level, this.syntax);
-        this.architecture = data;
+        const data = await generateArchitecture(prompt, this.level, this.syntax, this.abortController.signal);
+        
+        // Handle payload containing both root and explicit cross-node edges
+        if (data.root) {
+          this.architecture = data.root;
+          this.architectureEdges = data.edges || [];
+        } else {
+          this.architecture = data;
+          this.architectureEdges = data.edges || [];
+        }
+
         this.focusId = null;
         this.readmeStale = true;
         this.readme = "";
@@ -122,9 +254,14 @@ export const useAppStore = defineStore("app", {
 
         this._persist();
       } catch (e: any) {
-        this.error = e.message || "Failed to generate";
+        if (e.name === "AbortError") {
+          this.error = "Generation stopped by user.";
+        } else {
+          this.error = e.message || "Failed to generate";
+        }
       } finally {
         this.loading = false;
+        this.abortController = null;
       }
     },
 
@@ -132,7 +269,7 @@ export const useAppStore = defineStore("app", {
       if (this.lastPrompt) await this.generate(this.lastPrompt);
     },
 
-    // ── Navigation ───────────────────────────────────────────────
+    // ── Navigation & Focus ────────────────────────────────────────
     focusNode(id: string) {
       if (!this.architecture) return;
       this.focusId = id;
@@ -151,16 +288,29 @@ export const useAppStore = defineStore("app", {
       }
     },
 
-    // ── Hybrid editing ───────────────────────────────────────────
-    editNode(id: string, title: string, description: string) {
+    // ── Direct Visual On-Canvas Editing ───────────────────────────
+    editNode(id: string, title: string, description: string, type?: string) {
       if (!this.architecture) return;
       const arch = deepClone(this.architecture);
       const node = findInTree(arch, id);
       if (node) {
         node.title = title;
         node.description = description;
+        if (type) node.type = type;
         this.architecture = arch;
         this.readmeStale = true;
+        this._rebuildGraph();
+        this._persist();
+      }
+    },
+
+    setNodeType(id: string, type: string) {
+      if (!this.architecture) return;
+      const arch = deepClone(this.architecture);
+      const node = findInTree(arch, id);
+      if (node) {
+        node.type = type;
+        this.architecture = arch;
         this._rebuildGraph();
         this._persist();
       }
@@ -191,9 +341,10 @@ export const useAppStore = defineStore("app", {
       if (parent) {
         const newNode: ArchNode = {
           id: "new-" + Math.random().toString(36).slice(2, 8),
-          title: "New Node",
-          description: "Click edit to describe",
+          title: "New Component",
+          description: "Click to edit description...",
           depth: parent.depth + 1,
+          type: "service_layer",
           children: [],
           code: "",
         };
@@ -243,11 +394,23 @@ export const useAppStore = defineStore("app", {
 
     // ── Upload ───────────────────────────────────────────────────
     async uploadCodebase(files: { path: string; content: string }[]) {
+      if (this.abortController) {
+        this.abortController.abort();
+      }
+      this.abortController = new AbortController();
       this.uploadLoading = true;
       this.error = null;
       try {
-        const data = await analyzeCodebase(files);
-        this.architecture = data;
+        const data = await analyzeCodebase(files, this.abortController.signal);
+        
+        if (data.root) {
+          this.architecture = data.root;
+          this.architectureEdges = data.edges || [];
+        } else {
+          this.architecture = data;
+          this.architectureEdges = data.edges || [];
+        }
+
         this.focusId = null;
         this.lastPrompt = "[Uploaded Codebase]";
         this.readmeStale = true;
@@ -256,15 +419,25 @@ export const useAppStore = defineStore("app", {
         this._rebuildGraph();
         this._persist();
       } catch (e: any) {
-        this.error = e.message || "Failed to analyze codebase";
+        if (e.name === "AbortError") {
+          this.error = "Codebase analysis stopped by user.";
+        } else {
+          this.error = e.message || "Failed to analyze codebase";
+        }
       } finally {
         this.uploadLoading = false;
+        this.abortController = null;
       }
     },
 
     // ── Code viewer ───────────────────────────────────────────────
     toggleCodeViewer() {
       this.codeViewerVisible = !this.codeViewerVisible;
+    },
+
+    togglePromptPanel() {
+      this.promptPanelVisible = !this.promptPanelVisible;
+      this._persist();
     },
 
     // ── Node AI ──────────────────────────────────────────────────
@@ -283,6 +456,7 @@ export const useAppStore = defineStore("app", {
       if (node) {
         if (updatedNode.title) node.title = updatedNode.title;
         if (updatedNode.description) node.description = updatedNode.description;
+        if (updatedNode.type) node.type = updatedNode.type;
         if (updatedNode.code !== undefined) node.code = updatedNode.code;
         this.architecture = arch;
         this.readmeStale = true;
@@ -291,8 +465,18 @@ export const useAppStore = defineStore("app", {
       }
     },
 
+    stopGeneration() {
+      if (this.abortController) {
+        this.abortController.abort();
+        this.abortController = null;
+        this.loading = false;
+        this.uploadLoading = false;
+      }
+    },
+
     // ── Reset ────────────────────────────────────────────────────
     reset() {
+      this.stopGeneration();
       this.level = 2;
       this.mode = "AI Decompose";
       this.syntax = "Hide Syntax";
@@ -300,6 +484,7 @@ export const useAppStore = defineStore("app", {
       this.focusId = null;
       this.error = null;
       this.architecture = null;
+      this.architectureEdges = [];
       this.nodes = [];
       this.edges = [];
       this.breadcrumbs = [];
@@ -309,6 +494,9 @@ export const useAppStore = defineStore("app", {
       this.readmeVisible = false;
       this.fileStructure = [];
       this.fileStructureVisible = false;
+      this.promptPanelVisible = true;
+      this.sidebarWidth = 300;
+      this.sidebarCollapsed = false;
       this._persist();
     },
   },
